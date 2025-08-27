@@ -5,7 +5,7 @@ import { toast } from "react-toastify";
 export const SellerContext = createContext();
 
 const SellerContextProvider = (props) => {
-  const backend = import.meta.env.VITE_REACT_APP_API_BASE_URL || "http://localhost:3000";
+  const backend =  "http://localhost:3000";
 
   const currency = "₹";
 
