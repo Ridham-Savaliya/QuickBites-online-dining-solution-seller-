@@ -1,4 +1,4 @@
-import { useContext, useState } from "react";
+import { useContext, useState, useEffect } from "react";
 import axios from "axios";
 import { toast } from "react-toastify";
 import { useNavigate } from "react-router-dom";
@@ -10,7 +10,7 @@ const Login = () => {
   const { backend, setStoken } = useContext(SellerContext);
 
   // State variables
-  const [state, setState] = useState("Login"); // "Sign Up", "Login", "Forgot Password", "Reset Password"
+  const [state, setState] = useState("Login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -18,7 +18,106 @@ const Login = () => {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [resetCode, setResetCode] = useState("");
+  const [errors, setErrors] = useState({});
 
+  // Validation functions
+  const validateEmail = (email) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+const validatePassword = (password) => {
+  // At least one lowercase, one uppercase, one digit, one special (including .)
+  const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&.])[A-Za-z\d@$!%*?&.]{8,}$/;
+  return passwordRegex.test(password);
+};
+
+  const validateName = (name) => {
+    const nameRegex = /^[a-zA-Z\s]{2,50}$/;
+    return nameRegex.test(name);
+  };
+
+  // Real-time validation
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const newErrors = {};
+
+      if (state === "Sign Up" && name) {
+        if (!validateName(name)) {
+          newErrors.name = "Name must be 2-50 characters long and contain only letters";
+        }
+      }
+
+      if ((state === "Login" || state === "Sign Up") && email) {
+        if (!validateEmail(email)) {
+          newErrors.email = "Please enter a valid email address";
+        }
+      }
+
+      if ((state === "Login" || state === "Sign Up") && password) {
+        if (!validatePassword(password)) {
+          newErrors.password = "Password must be at least 8 characters long and contain uppercase, lowercase, number, and special character";
+        }
+      }
+
+      if (state === "Reset Password") {
+        if (newPassword && !validatePassword(newPassword)) {
+          newErrors.newPassword = "Password must be at least 8 characters long and contain uppercase, lowercase, number, and special character";
+        }
+        if (confirmPassword && newPassword !== confirmPassword) {
+          newErrors.confirmPassword = "Passwords do not match";
+        }
+      }
+
+      setErrors(newErrors);
+    }, 300); // Debounce for 300ms
+
+    return () => clearTimeout(timer);
+  }, [name, email, password, newPassword, confirmPassword, state]);
+
+  // Form submission validation
+  const validateForm = () => {
+    const newErrors = {};
+
+    if (state === "Sign Up") {
+      if (!name) {
+        newErrors.name = "Name is required";
+      } else if (!validateName(name)) {
+        newErrors.name = "Name must be 2-50 characters long and contain only letters";
+      }
+    }
+
+    if (state === "Login" || state === "Sign Up") {
+      if (!email) {
+        newErrors.email = "Email is required";
+      } else if (!validateEmail(email)) {
+        newErrors.email = "Please enter a valid email address";
+      }
+
+      if (!password) {
+        newErrors.password = "Password is required";
+      } else if (!validatePassword(password)) {
+        newErrors.password = "Password must be at least 8 characters long and contain uppercase, lowercase, number, and special character";
+      }
+    }
+
+    if (state === "Reset Password") {
+      if (!newPassword) {
+        newErrors.newPassword = "New password is required";
+      } else if (!validatePassword(newPassword)) {
+        newErrors.newPassword = "Password must be at least 8 characters long and contain uppercase, lowercase, number, and special character";
+      }
+
+      if (!confirmPassword) {
+        newErrors.confirmPassword = "Confirm password is required";
+      } else if (newPassword !== confirmPassword) {
+        newErrors.confirmPassword = "Passwords do not match";
+      }
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
 
   const handleGoogleLogin = useGoogleLogin({
     onSuccess: async (response) => {
@@ -41,10 +140,8 @@ const Login = () => {
     flow: "auth-code",
   });
 
-  // Google verify for password reset
   const handleGoogleVerifyForReset = useGoogleLogin({
     onSuccess: async (response) => {
-      // Store the code locally; backend will use it for verification on reset
       setResetCode(response.code);
       toast.success("Verified with Google. Now set your new password.");
       setState("Reset Password");
@@ -55,6 +152,11 @@ const Login = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    if (!validateForm()) {
+      return;
+    }
+
     setLoading(true);
     let url = import.meta.env.VITE_REACT_APP_API_BASE_URL;
     let payload = {};
@@ -79,18 +181,21 @@ const Login = () => {
       if (data.success) {
         toast.success(data.message);
         if (state === "Sign Up") {
-          setState("Login"); // Back to login after signup
+          setState("Login");
+          setName("");
+          setEmail("");
+          setPassword("");
         } else if (state === "Login") {
           setStoken(data.token);
           localStorage.setItem("seller-token", data.token);
-          navigate("/dashboard"); // Login complete
-          // setState("Verify OTP"); // Show OTP for login
+          navigate("/dashboard");
         } else if (state === "Reset Password") {
-          setState("Login"); // Back to login after reset
+          setState("Login");
           setNewPassword("");
-          setConfirmPassword(""); // Clear confirm password
+          setConfirmPassword("");
           setResetCode("");
         }
+        setErrors({});
       } else {
         toast.error(data.message);
       }
@@ -105,12 +210,12 @@ const Login = () => {
     setLoading(false);
   };
 
-
-
-
   return (
-    <form onSubmit={handleSubmit} className="flex items-center py-10">
-      <div className="flex flex-col gap-3 m-auto items-start p-8 min-w-[340px] sm:min-w-96 border rounded-xl text-zinc-600 text-sm shadow-lg shadow-zinc-500 bg-gradient-to-b from-orange-100 to-orange-200">
+    <div className="flex items-center justify-center min-h-screen py-10 bg-gray-100">
+      <form 
+        onSubmit={handleSubmit} 
+        className="flex flex-col gap-3 m-auto items-start p-8 w-[340px] sm:w-[384px] max-w-[384px] border rounded-xl text-zinc-600 text-sm shadow-lg shadow-zinc-500 bg-gradient-to-b from-orange-100 to-orange-200"
+      >
         <p className="text-2xl font-semibold">
           {state === "Sign Up"
             ? "Create Account"
@@ -128,36 +233,32 @@ const Login = () => {
           to access your dashboard
         </p>
 
-        {/* Name field for Sign Up */}
         {state === "Sign Up" && (
           <div className="w-full">
             <p className="mt-2">Full Name</p>
             <input
               type="text"
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => setName(e.target.value.trim())}
               value={name}
-              required
-              className="border border-zinc-500 rounded w-full p-2 mt-1 bg-transparent"
+              className={`border border-zinc-500 rounded w-full p-2 mt-1 bg-transparent ${errors.name ? 'border-red-500' : ''}`}
             />
+            {errors.name && <p className="text-red-500 text-xs mt-1 break-words">{errors.name}</p>}
           </div>
         )}
 
-        {/* Email field for Login and Sign Up */}
-        {(state === "Login" ||
-          state === "Sign Up") && (
-            <div className="w-full">
-              <p className="mt-4">Email</p>
-              <input
-                type="email"
-                onChange={(e) => setEmail(e.target.value)}
-                value={email}
-                required
-                className="border border-zinc-500 rounded w-full p-2 mt-1 bg-transparent"
-              />
-            </div>
-          )}
+        {(state === "Login" || state === "Sign Up") && (
+          <div className="w-full">
+            <p className="mt-4">Email</p>
+            <input
+              type="email"
+              onChange={(e) => setEmail(e.target.value.trim())}
+              value={email}
+              className={`border border-zinc-500 rounded w-full p-2 mt-1 bg-transparent ${errors.email ? 'border-red-500' : ''}`}
+            />
+            {errors.email && <p className="text-red-500 text-xs mt-1 break-words">{errors.email}</p>}
+          </div>
+        )}
 
-        {/* Password field for Login and Sign Up */}
         {(state === "Login" || state === "Sign Up") && (
           <div className="w-full">
             <p className="mt-4">Password</p>
@@ -165,16 +266,15 @@ const Login = () => {
               type="password"
               onChange={(e) => setPassword(e.target.value)}
               value={password}
-              required
-              className="border border-zinc-500 rounded w-full p-2 mt-1 bg-transparent"
+              className={`border border-zinc-500 rounded w-full p-2 mt-1 bg-transparent ${errors.password ? 'border-red-500' : ''}`}
             />
+            {errors.password && <p className="text-red-500 text-xs mt-1 break-words">{errors.password}</p>}
           </div>
         )}
 
-        {/* Google verify step for Forgot Password */}
         {state === "Forgot Password" && (
           <div className="w-full mt-2">
-            <p className="text-sm text-gray-700">
+            <p className="text-sm text-gray-700 break-words">
               Verify your identity with Google, then set a new password.
             </p>
             <button
@@ -190,14 +290,13 @@ const Login = () => {
               <span className="font-medium">Verify with Google</span>
             </button>
             {resetCode && (
-              <p className="mt-2 text-green-700 text-sm">
+              <p className="mt-2 text-green-700 text-sm break-words">
                 Verified. Continue below to set a new password.
               </p>
             )}
           </div>
         )}
 
-        {/* New Password and Confirm Password fields for Reset Password */}
         {state === "Reset Password" && (
           <>
             <div className="w-full">
@@ -206,9 +305,9 @@ const Login = () => {
                 type="password"
                 onChange={(e) => setNewPassword(e.target.value)}
                 value={newPassword}
-                required
-                className="border border-zinc-500 rounded w-full p-2 mt-1 bg-transparent"
+                className={`border border-zinc-500 rounded w-full p-2 mt-1 bg-transparent ${errors.newPassword ? 'border-red-500' : ''}`}
               />
+              {errors.newPassword && <p className="text-red-500 text-xs mt-1 break-words">{errors.newPassword}</p>}
             </div>
             <div className="w-full">
               <p className="mt-4">Confirm Password</p>
@@ -216,20 +315,18 @@ const Login = () => {
                 type="password"
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 value={confirmPassword}
-                required
-                className="border border-zinc-500 rounded w-full p-2 mt-1 bg-transparent"
+                className={`border border-zinc-500 rounded w-full p-2 mt-1 bg-transparent ${errors.confirmPassword ? 'border-red-500' : ''}`}
               />
+              {errors.confirmPassword && <p className="text-red-500 text-xs mt-1 break-words">{errors.confirmPassword}</p>}
             </div>
           </>
         )}
 
-        {/* Submit button */}
         {state !== "Forgot Password" && (
           <button
             type="submit"
             disabled={loading}
-            className="w-full border bg-orange-400 py-3 text-zinc-700 font-medium rounded mt-4 text-[16px] 
-      ${!loading && 'hover:bg-orange-500 hover:text-black hover:scale-105'} transition-all duration-300"
+            className={`w-full border bg-orange-400 py-3 text-zinc-700 font-medium rounded mt-4 text-[16px] ${!loading ? 'hover:bg-orange-500 hover:text-black hover:scale-105' : 'opacity-50 cursor-not-allowed'} transition-all duration-300`}
           >
             {loading
               ? "Working on..."
@@ -240,7 +337,6 @@ const Login = () => {
                   : "Login Account"}
           </button>
         )}
-
 
         {state === "Login" && (
           <button
@@ -257,10 +353,8 @@ const Login = () => {
           </button>
         )}
 
-
-        {/* Navigation links */}
         {(state === "Login" || state === "Sign Up") && (
-          <p className="mt-4">
+          <p className="mt-4 break-words">
             {state === "Sign Up"
               ? "Already have an account?"
               : "Don't have an account?"}{" "}
@@ -268,40 +362,40 @@ const Login = () => {
               onClick={() =>
                 setState(state === "Sign Up" ? "Login" : "Sign Up")
               }
-              className="text-primary underline cursor-pointer"
+              className="text-orange-600 underline cursor-pointer hover:text-orange-800"
             >
               {state === "Sign Up" ? "Login Here" : "Sign Up Here"}
             </span>
           </p>
         )}
         {state === "Login" && (
-          <p className="mt-2">
+          <p className="mt-2 break-words">
             Forgot Password?
             <span
               onClick={() => setState("Forgot Password")}
-              className="text-primary underline cursor-pointer"
+              className="text-orange-600 underline cursor-pointer hover:text-orange-800"
             >
               Reset Here
             </span>
           </p>
         )}
-        {(state === "Forgot Password" ||
-          state === "Reset Password") && (
-            <button
-              type="button"
-              onClick={() => {
-                setState("Login");
-                setNewPassword("");
-                setConfirmPassword(""); // Clear confirm password
-                setResetCode("");
-              }}
-              className="mt-2 text-sm text-primary underline cursor-pointer"
-            >
-              Back to Login
-            </button>
-          )}
-      </div>
-    </form>
+        {(state === "Forgot Password" || state === "Reset Password") && (
+          <button
+            type="button"
+            onClick={() => {
+              setState("Login");
+              setNewPassword("");
+              setConfirmPassword("");
+              setResetCode("");
+              setErrors({});
+            }}
+            className="mt-2 text-sm text-orange-600 underline cursor-pointer hover:text-orange-800"
+          >
+            Back to Login
+          </button>
+        )}
+      </form>
+    </div>
   );
 };
 
