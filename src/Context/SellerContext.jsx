@@ -33,7 +33,7 @@ const SellerContextProvider = (props) => {
     }
   };
 
-  const getOrders = async () => {
+  const getOrders = async () => {                                 
     const { data } = await axios.post(
       `${backend}/api/order/get-orders2`,
       {},
